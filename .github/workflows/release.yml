@@ -2,10 +2,10 @@ name: Build and publish signed release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
-# Required to publish this tag's GitHub Release and its assets.
+# Required to create a version tag and publish the GitHub Release and assets.
 permissions:
   contents: write
 
@@ -18,17 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Check out tagged source
+      - name: Check out main-branch source and history
         uses: actions/checkout@v4
-      - name: Verify release tag matches Android version
-        shell: bash
-        run: |
-          version=$(sed -n "s/^[[:space:]]*versionName ['\"]\([^'\"]*\)['\"].*/\1/p" android/app/build.gradle | head -n 1)
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
-            echo "::error::The tag must be v followed by the Android versionName."
-            exit 1
-          fi
-          echo "RELEASE_APK_NAME=Pocket-Stash-${GITHUB_REF_NAME}.apk" >> "$GITHUB_ENV"
+        with:
+          # Version codes are derived from the complete, fast-forward history.
+          fetch-depth: 0
+      - name: Assign the next release version
+        run: python3 tools/release_version.py
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -86,25 +82,31 @@ jobs:
           path: release-output/*
           if-no-files-found: error
           retention-days: 14
-      - name: Publish GitHub pre-release
+      - name: Publish GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Retry a draft after an interrupted upload, but never overwrite an
-          # already-published release under an existing version tag.
-          existing=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft' 2>/dev/null || true)
+          # A pre-existing tag must point to this exact commit. Never overwrite
+          # a published release; an interrupted draft can safely be retried.
+          git fetch --tags --quiet origin
+          existing_commit=$(git rev-parse --verify -q "refs/tags/${RELEASE_TAG}^{commit}" || true)
+          if [[ -n "$existing_commit" && "$existing_commit" != "$GITHUB_SHA" ]]; then
+            echo "::error::The calculated tag already identifies a different commit."
+            exit 1
+          fi
+          existing=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null || true)
           if [[ "$existing" == "false" ]]; then
-            echo "::error::This release is already published. Bump the version and use a new tag."
+            echo "::error::This release is already published; refusing to replace it."
             exit 1
           fi
           if [[ -z "$existing" ]]; then
-            gh release create "$GITHUB_REF_NAME" --verify-tag --draft --prerelease \
-              --title "Pocket Stash $GITHUB_REF_NAME" \
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --draft \
+              --title "Pocket Stash $RELEASE_TAG" \
               --notes-file .github/release-notes.md --generate-notes
           fi
-          gh release upload "$GITHUB_REF_NAME" release-output/* --clobber
-          gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease
+          gh release upload "$RELEASE_TAG" release-output/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
       - name: Remove temporary signing key
         if: always()
         shell: bash

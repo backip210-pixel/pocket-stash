@@ -6,9 +6,11 @@ An unofficial Android companion and local setup page for [Stash](https://github.
 
 ## Download and build the APK on GitHub
 
-Open this repository's **Releases** page and download the signed `Pocket-Stash-v*.apk` from the newest appropriate release. Android may ask you to allow installation from your browser or file manager. Early versions are marked **pre-release** while they are being tested on real devices. The companion still needs Termux and Stash; see the first-time setup below.
+Open this repository's **Releases** page and download the signed `Pocket-Stash-v*.apk` from the latest release. Android may ask you to allow installation from your browser or file manager. The companion still needs Termux and Stash; see the first-time setup below.
 
-A push of a version tag, such as `v0.3.0`, starts `.github/workflows/release.yml`. GitHub runs the Python tests, Android unit tests and lint, builds and verifies a **release-signed APK**, and attaches the APK and a `SHA256SUMS.txt` file to a GitHub pre-release. The tag must match `versionName` in `android/app/build.gradle`. For each future update, increase `versionCode`, update `versionName`, commit the changes and push a new matching tag. GitHub's generated source archives are attached automatically.
+Every push to `main` starts `.github/workflows/release.yml`. GitHub runs the Python tests, Android unit tests and lint, builds and verifies a **release-signed APK**, creates its version tag, and publishes the APK and `SHA256SUMS.txt` as a normal GitHub release. A push containing multiple commits is released together. GitHub's generated source archives are attached automatically.
+
+CI calculates an increasing Android version code and version name from the complete, fast-forward commit history, starting after the original `v0.3.0` release; it exports them to Gradle for the release build. Do not force-push, rewrite `main` history, or reset the baseline in `tools/release_version.py` without a versioning migration. The workflow checks for existing tags and will not replace a published release.
 
 The repository owner must retain the **same private release signing key** for future versions. GitHub stores it in encrypted Actions secrets; it is not committed to this repository. The owner should also keep an offline private backup of the keystore and password: if the key is lost, future APKs cannot update the installed app in place. Anyone with the key can impersonate app updates, so never upload it to a public repository or share it. A release APK signed with this key can update a previous release signed with the same key and a lower version code. The first release uses a different key from earlier debug builds; uninstall an older debug build first if Android rejects the update. Termux and Stash data are separate.
 
@@ -16,13 +18,13 @@ Every push or pull request also starts `.github/workflows/android.yml`, which bu
 
 ### Set up release signing for your own repository
 
-The original repository's owner has configured release signing. If you fork or create your own repository, create and privately back up your own keystore, then configure repository Actions secrets before pushing a release tag:
+The original repository's owner has configured release signing. If you fork the repository with its full history, create and privately back up your own keystore, then configure repository Actions secrets before pushing to `main`:
 
 1. With a JDK installed, create a PKCS12 key with alias `pocket-stash`, for example `keytool -genkeypair -keystore pocket-stash-release.p12 -storetype PKCS12 -alias pocket-stash -keyalg RSA -keysize 3072 -validity 18250 -dname "CN=Pocket Stash"`. Use a strong password for the keystore and key. Keep the keystore and password private and backed up; never commit them.
 2. In your GitHub repository's **Settings → Secrets and variables → Actions**, set `POCKET_STASH_RELEASE_KEYSTORE` to the single-line base64 encoding of the keystore, and `POCKET_STASH_RELEASE_PASSWORD` to its password. For example, `base64 -w0 pocket-stash-release.p12` prints the value on Linux. Do this only on a trusted device and do not paste the value into an issue, pull request or public terminal log.
-3. Push a new tag matching the Android `versionName`. If the secrets are missing or invalid, the release job fails rather than publishing an unsigned APK. Avoid reusing a published tag; increase both version values for the next build.
+3. Push the update to `main`; GitHub assigns a new version and creates the matching tag and release. If the secrets are missing or invalid, the release job fails rather than publishing an unsigned APK. If you initialized a new repository without the original Git history, adjust the baseline in `tools/release_version.py` before the first release; don't reuse an existing version code when signing updates with the same key.
 
-A release job publishes as a pre-release and requires `contents: write` for its GitHub-provided token. GitHub disables some workflows for forks by default; enable Actions in the fork if necessary. If a run is interrupted while its release is still a draft, retrying the run can complete it; a published release is not overwritten.
+The release job publishes a normal release and requires `contents: write` for its GitHub-provided token. GitHub disables some workflows for forks by default; enable Actions in the fork if necessary. If a run is interrupted while its release is still a draft, retrying the run can complete it; a published release is not overwritten.
 
 ### Build locally
 
@@ -35,7 +37,7 @@ cd android
 # Debug APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Windows: use `gradlew.bat`. A local **release** build additionally needs `POCKET_STASH_KEYSTORE` set to the private keystore file path and `POCKET_STASH_SIGNING_PASSWORD` set to its password; then run `./gradlew assembleRelease`. Without signing credentials, the release build fails. Avoid exposing the password in shell history or logs. The Gradle build creates the companion ZIP from this repository's `server.py`, `performer_workflow.py` and `web/` files and embeds it in the APK.
+Windows: use `gradlew.bat`. A local **release** build additionally needs `POCKET_STASH_KEYSTORE` set to the private keystore file path and `POCKET_STASH_SIGNING_PASSWORD` set to its password; then run `./gradlew assembleRelease`. To produce an installable update, also set `POCKET_STASH_VERSION_CODE` to a higher code than the installed APK and `POCKET_STASH_VERSION_NAME` to its version name. Without signing credentials, the release build fails. Avoid exposing the password in shell history or logs. The Gradle build creates the companion ZIP from this repository's `server.py`, `performer_workflow.py` and `web/` files and embeds it in the APK.
 
 ## What you need on your phone
 

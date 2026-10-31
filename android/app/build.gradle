@@ -5,6 +5,12 @@ plugins {
 // Release credentials are supplied by the build environment, never the repo.
 def pocketKeystorePath = System.getenv('POCKET_STASH_KEYSTORE')
 def pocketSigningPassword = System.getenv('POCKET_STASH_SIGNING_PASSWORD')
+// CI uses the full main-branch history to give every published update a new
+// version and a strictly increasing Android versionCode.
+def pocketBaselineVersionCode = 3
+def pocketBaselineVersionName = '0.3.0'
+def pocketReleaseVersionCode = System.getenv('POCKET_STASH_VERSION_CODE')
+def pocketReleaseVersionName = System.getenv('POCKET_STASH_VERSION_NAME')
 
 android {
     namespace 'app.pocketstash.companion'
@@ -15,8 +21,8 @@ android {
         applicationId 'app.pocketstash.companion'
         minSdk 26
         targetSdk 35
-        versionCode 3
-        versionName '0.3.0'
+        versionCode = pocketReleaseVersionCode ? pocketReleaseVersionCode.toInteger() : pocketBaselineVersionCode
+        versionName = pocketReleaseVersionName ?: pocketBaselineVersionName
     }
 
     signingConfigs {
