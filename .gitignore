@@ -6,6 +6,10 @@ local.properties
 *.aab
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.key
+*signing-key-PRIVATE*
 
 # Python/editor files
 __pycache__/

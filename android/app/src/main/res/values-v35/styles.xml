@@ -1,7 +1,12 @@
 <resources>
-    <style name="AppTheme" parent="BaseAppTheme">
+    <style name="AppThemeLight" parent="BaseAppThemeLight">
         <item name="android:navigationBarColor">#f5f5ef</item>
         <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+    <style name="AppThemeDark" parent="BaseAppThemeDark">
+        <item name="android:navigationBarColor">#101914</item>
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 </resources>

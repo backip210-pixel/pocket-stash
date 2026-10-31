@@ -57,6 +57,7 @@ public final class MainActivity extends Activity {
     private static final int FILE_REQUEST = 121;
     private static final int VIDEO_PERMISSION_REQUEST = 122;
     private static final long START_TIMEOUT_MS = 5 * 60_000L;
+    private static final String DARK_APPEARANCE = "appearance_dark";
 
     // Narrowly updates one Termux property while preserving other preferences.
     private static final String PREPARE_COMMAND =
@@ -80,9 +81,14 @@ public final class MainActivity extends Activity {
     private boolean probing;
     private boolean pendingStart;
     private boolean starting;
+    private boolean darkAppearance;
+    private String warnedCompanionVersion;
     private long startedAt;
 
     @Override protected void onCreate(Bundle state) {
+        darkAppearance = getSharedPreferences(TermuxResultReceiver.PREFS, MODE_PRIVATE)
+                .getBoolean(DARK_APPEARANCE, true);
+        setTheme(darkAppearance ? R.style.AppThemeDark : R.style.AppThemeLight);
         super.onCreate(state);
         setContentView(R.layout.activity_main);
         onboarding = findViewById(R.id.onboarding);
@@ -91,6 +97,7 @@ public final class MainActivity extends Activity {
         startButton = findViewById(R.id.start);
         web = findViewById(R.id.webview);
         prefs = getSharedPreferences(TermuxResultReceiver.PREFS, MODE_PRIVATE);
+        configureAppearanceControls();
 
         configureWebView();
         findViewById(R.id.open_termux).setOnClickListener(v -> openTermux());
@@ -98,7 +105,7 @@ public final class MainActivity extends Activity {
         findViewById(R.id.grant_permission).setOnClickListener(v -> explainAndRequestPermission());
         startButton.setOnClickListener(v -> probe(true));
         findViewById(R.id.check).setOnClickListener(v -> probe(false));
-        findViewById(R.id.nav_setup).setOnClickListener(v -> web.loadUrl(HOME_URL));
+        findViewById(R.id.nav_setup).setOnClickListener(v -> web.loadUrl(setupPageUrl()));
         findViewById(R.id.nav_stash).setOnClickListener(v -> web.loadUrl(STASH_URL));
         findViewById(R.id.nav_help).setOnClickListener(v -> {
             webContainer.setVisibility(View.GONE);
@@ -117,6 +124,39 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         probe(false);
+    }
+
+    private String setupPageUrl() {
+        return HOME_URL + "?appearance=" + (darkAppearance ? "dark" : "light");
+    }
+
+    private void configureAppearanceControls() {
+        String label = darkAppearance ? "Light mode" : "Dark mode";
+        Button onboardingButton = findViewById(R.id.appearance_onboarding);
+        Button toolbarButton = findViewById(R.id.appearance_toolbar);
+        onboardingButton.setText(label);
+        onboardingButton.setContentDescription("Switch to " + label.toLowerCase(java.util.Locale.ROOT));
+        toolbarButton.setText(darkAppearance ? "☀" : "☾");
+        toolbarButton.setContentDescription("Switch to " + label.toLowerCase(java.util.Locale.ROOT));
+        onboardingButton.setOnClickListener(v -> changeAppearance());
+        toolbarButton.setOnClickListener(v -> changeAppearance());
+    }
+
+    private void changeAppearance() {
+        Runnable change = () -> {
+            prefs.edit().putBoolean(DARK_APPEARANCE, !darkAppearance).apply();
+            recreate();
+        };
+        if (webContainer.getVisibility() != View.VISIBLE) {
+            change.run();
+            return;
+        }
+        // Recreating the Activity changes native dialogs and system bars too.
+        // Warn before reloading Stash or discarding unsaved page selections.
+        new AlertDialog.Builder(this).setTitle("Change appearance?")
+                .setMessage("This reloads the app and may discard unsaved selections in setup or Stash. Running Stash jobs keep working.")
+                .setPositiveButton("Change", (d, which) -> change.run())
+                .setNegativeButton("Cancel", null).show();
     }
 
     private void configureWebView() {
@@ -389,17 +429,18 @@ public final class MainActivity extends Activity {
         if (probing || isFinishing() || isDestroyed()) return;
         probing = true;
         network.execute(() -> {
-            boolean connected = isLocalCompanionRunning();
+            String companionVersion = localCompanionVersion();
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 probing = false;
                 boolean startIfMissing = pendingStart;
                 pendingStart = false;
-                if (connected) {
+                if (companionVersion != null) {
                     handler.removeCallbacksAndMessages(null);
                     setStarting(false);
                     prefs.edit().putBoolean("starting", false).apply();
                     showWeb();
+                    warnIfCompanionVersionDiffers(companionVersion);
                 } else if (startIfMissing) {
                     launchTermuxCompanion();
                 } else if (starting) {
@@ -414,15 +455,34 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private boolean isLocalCompanionRunning() {
+    private String localCompanionVersion() {
         JSONObject health = getJson(HOME_URL + "api/health", 8192);
         if (health != null && "Pocket Stash".equals(health.optString("name")) && !health.optBoolean("demo", true)) {
-            return true;
+            return health.optString("version", "");
         }
         // Also recognise the previously delivered Termux-only version (before /api/health existed).
         JSONObject old = getJson(HOME_URL + "api/status", 65536);
-        return old != null && old.has("version") && old.optJSONObject("tools") != null
-                && old.optJSONObject("server") != null && !old.optBoolean("demo", true);
+        if (old != null && old.has("version") && old.optJSONObject("tools") != null
+                && old.optJSONObject("server") != null && !old.optBoolean("demo", true)) {
+            return old.optString("version", "");
+        }
+        return null;
+    }
+
+    private void warnIfCompanionVersionDiffers(String runningVersion) {
+        if (runningVersion == null || runningVersion.isEmpty() || runningVersion.equals(warnedCompanionVersion)) return;
+        String appVersion;
+        try {
+            appVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return;
+        }
+        if (runningVersion.equals(appVersion)) return;
+        warnedCompanionVersion = runningVersion;
+        new AlertDialog.Builder(this).setTitle("Updated setup is not running yet")
+                .setMessage("The running setup is version " + runningVersion + "; this app is " + appVersion
+                        + ". To use the new features, first finish any active scans or moves. Then open setup’s Help → Stop setup server, and tap Start Pocket Stash. If you start it manually, update and restart the Termux source instead. Your Stash data is not deleted.")
+                .setPositiveButton("Got it", null).show();
     }
 
     private JSONObject getJson(String address, int maxBytes) {
@@ -525,7 +585,7 @@ public final class MainActivity extends Activity {
         boolean wasVisible = webContainer.getVisibility() == View.VISIBLE;
         onboarding.setVisibility(View.GONE);
         webContainer.setVisibility(View.VISIBLE);
-        if (!wasVisible) web.loadUrl(HOME_URL);
+        if (!wasVisible) web.loadUrl(setupPageUrl());
     }
 
     private static byte[] readBounded(InputStream in, int limit) throws IOException {

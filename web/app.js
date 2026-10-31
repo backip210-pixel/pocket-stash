@@ -2,8 +2,35 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const token = document.querySelector('meta[name="pocket-token"]').content;
+  const nativeAndroid = navigator.userAgent.includes('PocketStashAndroid/');
+  document.documentElement.dataset.native = String(nativeAndroid);
+  // Dark by default. A normal browser can switch themes here; the Android
+  // shell uses its own theme control and syncs the preference into this page.
+  function applyAppearance(theme) {
+    const chosen = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = chosen;
+    const button = $('themeButton');
+    const label = chosen === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    button.querySelector('use').setAttribute('href', chosen === 'dark' ? '#i-sun' : '#i-moon');
+    document.querySelector('meta[name="theme-color"]').content = chosen === 'dark' ? '#101914' : '#f7f8f5';
+    try { localStorage.setItem('pocket-theme', chosen); } catch (_) { /* private browsing may disable storage */ }
+  }
+  let savedTheme = 'dark';
+  try { savedTheme = localStorage.getItem('pocket-theme') || 'dark'; } catch (_) { /* use dark */ }
+  if (nativeAndroid) {
+    const requested = new URLSearchParams(window.location.search).get('appearance');
+    if (requested === 'dark' || requested === 'light') savedTheme = requested;
+  }
+  applyAppearance(savedTheme);
+  $('themeButton').addEventListener('click', () => applyAppearance(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+  try { $('scanPhashes').checked = localStorage.getItem('pocket-scan-phashes') !== 'off'; } catch (_) { /* default on */ }
+  $('scanPhashes').addEventListener('change', () => {
+    try { localStorage.setItem('pocket-scan-phashes', $('scanPhashes').checked ? 'on' : 'off'); } catch (_) { /* optional preference */ }
+  });
   // The Android shell blocks new windows; a direct HTTPS link can open in the browser.
-  if (navigator.userAgent.includes('PocketStashAndroid/')) {
+  if (nativeAndroid) {
     document.querySelectorAll('a[target="_blank"]').forEach(link => link.removeAttribute('target'));
   }
   let status = null;
@@ -19,7 +46,6 @@
   let wfRunning = false;
   let wfBusy = false;
   let wfPolling = false;
-  const nativeAndroid = navigator.userAgent.includes('PocketStashAndroid/');
   let refreshing = false;
   let busy = false;
   let toastTimer;
@@ -96,6 +122,7 @@
   }
   function render() {
     if (!status) return;
+    $('appVersion').textContent = 'v' + status.version;
     const toolsReady = status.tools.stash && status.tools.ffmpeg && status.tools.ffprobe;
     const installed = toolsReady;
     const storage = status.storage.available;
@@ -187,6 +214,9 @@
     $('folderCount').textContent = String(draft.length);
     $('addFolderButton').disabled = !ready || busy;
     $('scanButton').disabled = !ready || !draft.length || dirty || busy;
+    const activeTask = (status.jobs || []).some(job => ['READY', 'RUNNING', 'STOPPING'].includes(job.status));
+    $('generatePhashesButton').disabled = !ready || dirty || busy || activeTask || !draft.some(folder => !folder.excludeVideo);
+    $('scanPhashes').disabled = busy;
     $('draftActions').hidden = !dirty;
     $('saveOnlyButton').disabled = !ready || busy;
     $('saveScanButton').disabled = !ready || busy || !draft.length;
@@ -230,7 +260,7 @@
     }
     let hint = 'Start Stash to manage your folders.';
     if (ready && !draft.length) hint = 'Folders are only changed when you save.';
-    else if (ready) hint = dirty ? 'Save changes before starting a scan.' : 'Scans use Stash’s current task settings.';
+    else if (ready) hint = dirty ? 'Save changes before starting a scan.' : 'Other scan options use Stash’s task settings.';
     if (status.server.system === 'AUTH_REQUIRED') hint = 'Add your Stash API key in Connection settings.';
     if (status.server.system === 'SECURITY_BLOCKED') hint = 'Check the Stash server log for its security warning.';
     if (status.server.system === 'NEEDS_MIGRATION') hint = 'Open Stash to complete its database migration.';
@@ -360,16 +390,24 @@
     if (!dirty || !isFolderReady()) return;
     if (!draft.length && status.folders?.length && !window.confirm('Remove every configured folder? Stash will stop scanning them. Your files won’t be deleted.')) return;
     await runAction(async () => {
-      const result = await api('/api/folders', {folders: draft, fingerprint, scan});
+      const result = await api('/api/folders', {folders: draft, fingerprint, scan, generate_phashes: $('scanPhashes').checked});
       dirty = false;
       if (result.scan_error) toast('Folders saved, but the scan could not start: ' + result.scan_error, 'warning');
-      else if (result.job_id) toast('Folders saved. A scan has been queued.');
+      else if (result.job_id) toast('Folders saved. A scan has been queued in Stash.');
       else toast('Folders saved.');
     });
   }
   async function scan() {
     if (dirty) return toast('Save your changes before scanning.', 'warning');
-    await runAction(async () => { await api('/api/scan', {}); toast('Scan queued in Stash.'); });
+    await runAction(async () => { await api('/api/scan', {generate_phashes: $('scanPhashes').checked}); toast('Scan queued in Stash.'); });
+  }
+  async function generatePhashes() {
+    if (dirty) return toast('Save your folder changes first.', 'warning');
+    if (!window.confirm('Generate missing perceptual hashes for existing videos in your configured video libraries? This can take a while. Existing hashes are not overwritten.')) return;
+    await runAction(async () => {
+      await api('/api/phashes/generate', {});
+      toast('Perceptual hash generation queued in Stash. Follow its progress in Stash tasks.');
+    });
   }
   async function stopCompanion() {
     if (!status || status.demo) return toast('Stopping the companion is unavailable in the demo.', 'warning');
@@ -618,6 +656,7 @@
     else if (action === 'save') saveFolders(false);
     else if (action === 'save-scan') saveFolders(true);
     else if (action === 'scan') scan();
+    else if (action === 'generate-phashes') generatePhashes();
     else if (action === 'stop-companion') stopCompanion();
     else if (action === 'discard') { dirty = false; fingerprint = null; refresh(); toast('Unsaved changes discarded.'); }
     else if (action === 'copy') copy(`http://127.0.0.1:${status?.server.port || 9999}/`);

@@ -75,6 +75,60 @@ class FolderTests(unittest.TestCase):
                 self.assertEqual(result["scan_error"], "scan failed")
 
 
+class ScanAndHashTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.app = Companion(home=self.temp.name, allow_non_termux=True)
+        self.state = {"state": "running", "system": "OK"}
+        self.video = {"path": "/videos", "excludeVideo": False, "excludeImage": True}
+        self.image = {"path": "/photos", "excludeVideo": True, "excludeImage": False}
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_scan_explicitly_enables_video_phashes_by_default_and_can_disable(self):
+        with mock.patch.object(self.app, "server_state", return_value=self.state), \
+             mock.patch.object(self.app, "configured_folders", return_value=[self.video]), \
+             mock.patch.object(self.app, "gql", return_value={"metadataScan": "42"}) as gql:
+            self.assertEqual(self.app.scan(), {"job_id": "42"})
+            self.assertIn("scanGeneratePhashes: $phashes", gql.call_args.args[0])
+            self.assertEqual(gql.call_args.args[1], {"phashes": True})
+            self.app.scan(False)
+            self.assertEqual(gql.call_args.args[1], {"phashes": False})
+            with self.assertRaises(AppError):
+                self.app.scan("false")
+
+    def test_existing_hashes_are_generated_only_for_video_libraries_without_overwrite(self):
+        with mock.patch.object(self.app, "server_state", return_value=self.state), \
+             mock.patch.object(self.app, "configured_folders", return_value=[self.video, self.image]), \
+             mock.patch.object(self.app, "gql", return_value={"metadataGenerate": "17"}) as gql:
+            self.assertEqual(self.app.generate_missing_phashes(), {"job_id": "17"})
+            self.assertIn("phashes: true, overwrite: false", gql.call_args.args[0])
+            self.assertEqual(gql.call_args.args[1], {"paths": ["/videos"]})
+
+    def test_hash_actions_refuse_invalid_or_busy_state(self):
+        with self.assertRaises(AppError):
+            self.app._queue_scan(None)
+        with mock.patch.object(self.app.workflow, "is_running", return_value=True):
+            with self.assertRaises(AppError):
+                self.app.scan()
+            with self.assertRaises(AppError):
+                self.app.generate_missing_phashes()
+        with mock.patch.object(self.app, "server_state", return_value=self.state), \
+             mock.patch.object(self.app, "configured_folders", return_value=[self.image]):
+            with self.assertRaises(AppError):
+                self.app.generate_missing_phashes()
+
+    def test_save_and_scan_forwards_the_users_hash_option(self):
+        with mock.patch.object(self.app, "server_state", return_value=self.state), \
+             mock.patch.object(self.app, "configured_folders", return_value=[self.video]), \
+             mock.patch.object(self.app, "gql", return_value={"configureGeneral": {}}), \
+             mock.patch.object(self.app, "_queue_scan", return_value="8") as scan:
+            result = self.app.save_folders([self.video], folder_fingerprint([self.video]), True, False)
+            self.assertEqual(result["job_id"], "8")
+            scan.assert_called_once_with(False)
+
+
 class DemoTests(unittest.TestCase):
     def test_demo_workflow_without_real_processes(self):
         app = Companion(demo=True)

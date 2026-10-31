@@ -10,11 +10,11 @@ Open this repository's **Releases** page and download the signed `Pocket-Stash-v
 
 Every push to `main` starts `.github/workflows/release.yml`. GitHub runs the Python tests, Android unit tests and lint, builds and verifies a **release-signed APK**, creates its version tag, and publishes the APK and `SHA256SUMS.txt` as a normal GitHub release. A push containing multiple commits is released together. GitHub's generated source archives are attached automatically.
 
-CI calculates an increasing Android version code and version name from the complete, fast-forward commit history, starting after the original `v0.3.0` release; it exports them to Gradle for the release build. Do not force-push, rewrite `main` history, or reset the baseline in `tools/release_version.py` without a versioning migration. The workflow checks for existing tags and will not replace a published release.
+The release version is tracked in `android/version.properties`. Before each update, increase both `VERSION_NAME` and `VERSION_CODE`, and update the companion `APP_VERSION` in `server.py` to match. GitHub checks them against previous release tags, verifies the built APK values, and creates a matching Git tag. It refuses to replace a published release or publish a lower version. The version properties are part of the tagged source, so local builds report the same version as GitHub builds.
 
 The repository owner must retain the **same private release signing key** for future versions. GitHub stores it in encrypted Actions secrets; it is not committed to this repository. The owner should also keep an offline private backup of the keystore and password: if the key is lost, future APKs cannot update the installed app in place. Anyone with the key can impersonate app updates, so never upload it to a public repository or share it. A release APK signed with this key can update a previous release signed with the same key and a lower version code. The first release uses a different key from earlier debug builds; uninstall an older debug build first if Android rejects the update. Termux and Stash data are separate.
 
-Every push or pull request also starts `.github/workflows/android.yml`, which builds a **debug-signed APK** as a 14-day Actions artifact called `Pocket-Stash-debug-APK`. Debug artifacts are for testing and generally use a different key on each clean GitHub runner; they are not the stable release channel.
+Every push or pull request also starts `.github/workflows/android.yml` for debug tests and lint. Debug builds are **not distributed** because their ephemeral signing keys would conflict with release updates. Install from GitHub Releases instead.
 
 ### Set up release signing for your own repository
 
@@ -22,7 +22,8 @@ The original repository's owner has configured release signing. If you fork the 
 
 1. With a JDK installed, create a PKCS12 key with alias `pocket-stash`, for example `keytool -genkeypair -keystore pocket-stash-release.p12 -storetype PKCS12 -alias pocket-stash -keyalg RSA -keysize 3072 -validity 18250 -dname "CN=Pocket Stash"`. Use a strong password for the keystore and key. Keep the keystore and password private and backed up; never commit them.
 2. In your GitHub repository's **Settings → Secrets and variables → Actions**, set `POCKET_STASH_RELEASE_KEYSTORE` to the single-line base64 encoding of the keystore, and `POCKET_STASH_RELEASE_PASSWORD` to its password. For example, `base64 -w0 pocket-stash-release.p12` prints the value on Linux. Do this only on a trusted device and do not paste the value into an issue, pull request or public terminal log.
-3. Push the update to `main`; GitHub assigns a new version and creates the matching tag and release. If the secrets are missing or invalid, the release job fails rather than publishing an unsigned APK. If you initialized a new repository without the original Git history, adjust the baseline in `tools/release_version.py` before the first release; don't reuse an existing version code when signing updates with the same key.
+3. For your own signing key, set `android/release-certificate.sha256` to the lowercase SHA-256 fingerprint of its public certificate (remove colons from `keytool -list -v -keystore pocket-stash-release.p12 -alias pocket-stash`). This fingerprint is public; the private keystore and password must remain secret. Keep the same key for future updates.
+4. Increase `VERSION_NAME` and `VERSION_CODE` in `android/version.properties`, and set the same `APP_VERSION` in `server.py`, before pushing each update to `main`. GitHub builds, checks the certificate and version, and creates the matching tag and release. Missing/invalid secrets, a mismatched certificate or a reused version cause the release job to fail rather than publishing an incompatible APK.
 
 The release job publishes a normal release and requires `contents: write` for its GitHub-provided token. GitHub disables some workflows for forks by default; enable Actions in the fork if necessary. If a run is interrupted while its release is still a draft, retrying the run can complete it; a published release is not overwritten.
 
@@ -37,7 +38,9 @@ cd android
 # Debug APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Windows: use `gradlew.bat`. A local **release** build additionally needs `POCKET_STASH_KEYSTORE` set to the private keystore file path and `POCKET_STASH_SIGNING_PASSWORD` set to its password; then run `./gradlew assembleRelease`. To produce an installable update, also set `POCKET_STASH_VERSION_CODE` to a higher code than the installed APK and `POCKET_STASH_VERSION_NAME` to its version name. Without signing credentials, the release build fails. Avoid exposing the password in shell history or logs. The Gradle build creates the companion ZIP from this repository's `server.py`, `performer_workflow.py` and `web/` files and embeds it in the APK.
+The regular Python suite skips the optional real-Stash pHash test. To exercise scan and backfill against a local Stash v0.31.1 binary with FFmpeg installed, set `POCKET_STASH_TEST_STASH_BINARY=/path/to/stash` and rerun the suite. The test uses synthetic videos and a temporary Stash home, not your library.
+
+Windows: use `gradlew.bat`. A local **release** build additionally needs `POCKET_STASH_KEYSTORE` set to the private keystore file path and `POCKET_STASH_SIGNING_PASSWORD` set to its password; then run `./gradlew assembleRelease`. To produce an installable update, set a higher `VERSION_CODE` and the matching `VERSION_NAME` in the tracked `android/version.properties` file. Without signing credentials, the release build fails. Avoid exposing the password in shell history or logs. The Gradle build creates the companion ZIP from this repository's `server.py`, `performer_workflow.py` and `web/` files and embeds it in the APK.
 
 ## What you need on your phone
 
@@ -57,6 +60,8 @@ The setup page installs Stash from the community-maintained [Termux User Reposit
 5. When the setup page opens, tap **Install**. This enables TUR and installs Stash and FFmpeg. Then choose one or more readable folders, tap **Save & scan**, and choose **Open Stash**. The native toolbar also switches between **Setup** and **Stash**.
 
 Next time, open Pocket Stash: it connects if the setup server is already running, or tap **Start Pocket Stash**. The companion starts an installed Stash if port 9999 is free. Termux must remain running; Android may stop background processes. It is not a guaranteed always-on service or boot launcher.
+
+Updating the APK does not automatically replace a setup companion that is already running in Termux. If Pocket Stash warns about an older companion, first finish and verify any Stash scan, hash generation, or move. Use **Stop setup server** in the running setup page's help dialog, then tap **Start Pocket Stash** to start the new bundled version. A normal update does not erase your Stash database or settings.
 
 The copied preparation command is:
 
@@ -85,6 +90,12 @@ bash "$HOME/pocket-stash-source/install.sh"
 ```
 
 GitHub's own **Download ZIP** adds a repository-and-branch directory inside the archive: adjust the last path to point to that extracted directory's `install.sh`. The installer installs Python if needed, creates a `pocket-stash` launcher and starts the server. If the Android app is installed, tap **Already running? Check connection**. Otherwise open **http://127.0.0.1:8765/** in a browser on the phone. Next time, run `pocket-stash` in Termux. An earlier Termux-only `pocket-stash.zip` has its own original extraction path and instructions.
+
+## Appearance and perceptual hashes
+
+Pocket Stash opens in **dark mode** by default. Use the appearance control on the Android toolbar or first-time setup screen to switch between dark and light; changing the Android appearance reloads the page, so save unfinished selections first. In a browser, use the sun/moon button at the top of the setup page. Stash itself has its own appearance setting; the companion does not rewrite Stash's pages.
+
+**Generate perceptual hashes on scan** is enabled by default in Library folders, and can be switched off there. Stash generates video pHashes when scanning new or changed videos; this can make scans slower and consume CPU/battery. For videos that were scanned earlier without pHashes, use **Generate missing hashes** after the scan finishes. This queues a Stash job for the configured video folders, with existing hashes left unchanged; it does not guarantee that every video can be processed or matched. Check Stash's Tasks/logs if a file is unavailable or FFmpeg fails. This option generates video pHashes, not image pHashes, and does not automatically identify or upload media.
 
 ## Performer → Google Photos workflow
 

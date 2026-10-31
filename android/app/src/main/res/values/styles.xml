@@ -1,5 +1,15 @@
 <resources>
-    <style name="BaseAppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+    <attr name="pocketBackground" format="color" />
+    <attr name="pocketText" format="color" />
+    <attr name="pocketMutedText" format="color" />
+    <attr name="pocketAccentText" format="color" />
+    <attr name="pocketCard" format="color" />
+    <attr name="pocketCardBorder" format="color" />
+    <attr name="pocketSecondary" format="color" />
+    <attr name="pocketStatus" format="color" />
+    <attr name="pocketPrimary" format="color" />
+
+    <style name="BaseAppThemeLight" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">#276b57</item>
         <item name="android:windowLightStatusBar">true</item>
@@ -8,6 +18,34 @@
         <item name="android:navigationBarColor">#173e33</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">#f5f5ef</item>
+        <item name="pocketBackground">#f5f5ef</item>
+        <item name="pocketText">#173e33</item>
+        <item name="pocketMutedText">#5e6d63</item>
+        <item name="pocketAccentText">#245341</item>
+        <item name="pocketCard">#ffffff</item>
+        <item name="pocketCardBorder">#d5dfd4</item>
+        <item name="pocketSecondary">#f5f7f1</item>
+        <item name="pocketStatus">#e4eee4</item>
+        <item name="pocketPrimary">#173e33</item>
     </style>
-    <style name="AppTheme" parent="BaseAppTheme" />
+    <style name="BaseAppThemeDark" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#a5d8b1</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#101914</item>
+        <item name="android:navigationBarColor">#101914</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#101914</item>
+        <item name="pocketBackground">#101914</item>
+        <item name="pocketText">#e6f1e9</item>
+        <item name="pocketMutedText">#b4c7b9</item>
+        <item name="pocketAccentText">#c7e9ce</item>
+        <item name="pocketCard">#1a2820</item>
+        <item name="pocketCardBorder">#30463a</item>
+        <item name="pocketSecondary">#25392c</item>
+        <item name="pocketStatus">#294735</item>
+        <item name="pocketPrimary">#3b7555</item>
+    </style>
+    <style name="AppThemeLight" parent="BaseAppThemeLight" />
+    <style name="AppThemeDark" parent="BaseAppThemeDark" />
 </resources>

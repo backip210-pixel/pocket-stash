@@ -31,7 +31,7 @@ from performer_workflow import PerformerWorkflow, WorkflowError
 
 APP_DIR = Path(__file__).resolve().parent
 WEB_DIR = APP_DIR / "web"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.2"
 STASH_PORT = 9999
 MAX_BODY = 65536
 
@@ -117,6 +117,7 @@ class Companion:
         self.demo_folders = []
         self.demo_extra_dirs = set()
         self.demo_job_end = 0.0
+        self.demo_job_description = "Scanning sample library"
         if not demo:
             self.private.mkdir(parents=True, exist_ok=True, mode=0o700)
             try:
@@ -428,7 +429,7 @@ class Companion:
                 if self.demo:
                     folders = list(self.demo_folders)
                     if self.demo_job_end > time.monotonic():
-                        jobs = [{"id": "demo", "status": "RUNNING", "description": "Scanning sample library", "progress": None, "error": None}]
+                        jobs = [{"id": "demo", "status": "RUNNING", "description": self.demo_job_description, "progress": None, "error": None}]
                 else:
                     try:
                         folders = self.configured_folders()
@@ -586,9 +587,13 @@ class Companion:
             except (AppError, OSError, subprocess.SubprocessError):
                 pass
 
-    def save_folders(self, requested, fingerprint, scan=False):
+    def save_folders(self, requested, fingerprint, scan=False, generate_phashes=True):
+        if not isinstance(scan, bool) or not isinstance(generate_phashes, bool):
+            raise AppError("Invalid scan option.")
         requested = clean_folders(requested)
         with self.action_lock:
+            if self.workflow.is_running():
+                raise AppError("Wait for the current performer move to finish.", 409)
             state = self.server_state()
             if state["state"] != "running" or state["system"] not in ("SETUP", "OK"):
                 raise AppError("Start Stash and resolve any connection or migration issue before saving folders.", 409)
@@ -625,30 +630,68 @@ class Companion:
             job_id, scan_error = None, None
             if scan and requested:
                 try:
-                    job_id = self._queue_scan()
+                    job_id = self._queue_scan(generate_phashes)
                 except StashError as exc:
                     scan_error = str(exc)
             return {"saved": True, "job_id": job_id, "scan_error": scan_error}
 
-    def _queue_scan(self):
+    def _queue_scan(self, generate_phashes=True):
+        if not isinstance(generate_phashes, bool):
+            raise AppError("Invalid perceptual-hash option.")
         if self.demo:
+            self.demo_job_description = "Scanning sample library"
             self.demo_job_end = time.monotonic() + 4
             return "demo"
-        result = self.gql("mutation PocketScan { metadataScan(input: {}) }", timeout=15)
+        # Stash's scan flag affects new/changed videos. Other generation
+        # settings are left untouched; the separate generate action below
+        # fills in hashes for videos that were already scanned.
+        result = self.gql(
+            "mutation PocketScan($phashes: Boolean!) { metadataScan(input: {scanGeneratePhashes: $phashes}) }",
+            {"phashes": generate_phashes}, timeout=15)
         job = result.get("metadataScan")
         if job is None:
             raise StashError("Stash didn't return a scan job ID.", 502)
         return str(job)
 
-    def scan(self):
+    def scan(self, generate_phashes=True):
+        if not isinstance(generate_phashes, bool):
+            raise AppError("Invalid perceptual-hash option.")
         with self.action_lock:
+            if self.workflow.is_running():
+                raise AppError("Wait for the current performer move to finish.", 409)
             state = self.server_state()
             if state["state"] != "running" or state["system"] != "OK":
                 raise AppError("Finish Stash setup before starting a scan.")
             folders = self.demo_folders if self.demo else self.configured_folders()
             if not folders:
                 raise AppError("Add a library folder before scanning.")
-            return {"job_id": self._queue_scan()}
+            return {"job_id": self._queue_scan(generate_phashes)}
+
+    def generate_missing_phashes(self):
+        # Explicit, non-overwriting job for existing indexed videos, restricted
+        # to configured video libraries. Do not silently run it after a scan.
+        with self.action_lock:
+            if self.workflow.is_running():
+                raise AppError("Wait for the current performer move to finish.", 409)
+            state = self.server_state()
+            if state["state"] != "running" or state["system"] != "OK":
+                raise AppError("Finish Stash setup before generating perceptual hashes.")
+            folders = self.demo_folders if self.demo else self.configured_folders()
+            paths = [f["path"] for f in folders if not f["excludeVideo"]]
+            if not paths:
+                raise AppError("Add a video library folder before generating perceptual hashes.")
+            if self.demo:
+                self.demo_job_description = "Generating sample perceptual hashes"
+                self.demo_job_end = time.monotonic() + 4
+                return {"job_id": "demo"}
+            result = self.gql(
+                "mutation PocketGeneratePhashes($paths: [String!]) { "
+                "metadataGenerate(input: {paths: $paths, phashes: true, overwrite: false}) }",
+                {"paths": paths}, timeout=15)
+            job = result.get("metadataGenerate")
+            if job is None:
+                raise StashError("Stash didn't return a perceptual-hash job ID.", 502)
+            return {"job_id": str(job)}
 
 
 class WebServer(ThreadingHTTPServer):
@@ -777,11 +820,12 @@ class Handler(BaseHTTPRequestHandler):
                 app.stop_server()
                 result = {"stopped": True}
             elif path == "/api/folders":
-                if not isinstance(body.get("scan", False), bool):
-                    raise AppError("Invalid scan option.")
-                result = app.save_folders(body.get("folders"), body.get("fingerprint"), body.get("scan", False))
+                result = app.save_folders(body.get("folders"), body.get("fingerprint"),
+                                          body.get("scan", False), body.get("generate_phashes", True))
             elif path == "/api/scan":
-                result = app.scan()
+                result = app.scan(body.get("generate_phashes", True))
+            elif path == "/api/phashes/generate":
+                result = app.generate_missing_phashes()
             elif path == "/api/workflow/create-folder":
                 result = app.workflow.create_folder(body.get("parent"), body.get("name"))
             elif path == "/api/workflow/preview":
@@ -818,6 +862,7 @@ class Handler(BaseHTTPRequestHandler):
                     app.demo_folders = []
                     app.demo_extra_dirs = set()
                     app.demo_job_end = 0.0
+                    app.demo_job_description = "Scanning sample library"
                     app.key = ""
                     app.install = {"state": "idle", "step": "", "log": []}
                 app.workflow = PerformerWorkflow(app)

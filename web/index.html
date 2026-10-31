@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f7f8f5">
+  <meta name="theme-color" content="#101914">
+  <meta name="color-scheme" content="dark light">
   <meta name="pocket-token" content="__POCKET_TOKEN__">
   <title>Pocket Stash — your library, made local</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -33,6 +34,8 @@
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-8 0 .8 12a1 1 0 0 0 1 .9h6.4a1 1 0 0 0 1-.9L17 7M10 11v5m4-5v5"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.1A8.2 8.2 0 0 1 9.9 4a8.2 8.2 0 1 0 10.1 10.1Z"/></symbol>
   </svg>
 
   <div class="demo-banner" id="demoBanner" hidden>
@@ -63,14 +66,14 @@
         <p>Keep your library close, on your own device.</p>
         <span>BUILT FOR TERMUX <span>↗</span></span>
       </div>
-      <div class="side-footer">UNOFFICIAL STASH COMPANION <span>·</span> v0.3</div>
+      <div class="side-footer">UNOFFICIAL STASH COMPANION <span>·</span> <span id="appVersion">—</span></div>
     </aside>
 
     <main class="main">
       <div class="topbar">
         <div class="mobile-brand"><span class="brand-mark small"><span></span><span></span><span></span><span></span></span><strong>pocket<span>.</span></strong></div>
         <div class="breadcrumb"><span>YOUR WORKSPACE</span><span class="breadcrumb-sep">/</span><strong>Overview</strong></div>
-        <div class="topbar-right"><span class="local-badge"><svg class="icon"><use href="#i-lock"/></svg> ON THIS DEVICE</span><button class="icon-button top-help" data-action="help" aria-label="Help"><svg class="icon"><use href="#i-help"/></svg></button></div>
+        <div class="topbar-right"><span class="local-badge"><svg class="icon"><use href="#i-lock"/></svg> ON THIS DEVICE</span><button class="icon-button top-help" type="button" id="themeButton" aria-label="Switch to light mode" title="Switch to light mode"><svg class="icon"><use href="#i-sun"/></svg></button><button class="icon-button top-help" data-action="help" aria-label="Help"><svg class="icon"><use href="#i-help"/></svg></button></div>
       </div>
 
       <div class="content">
@@ -125,6 +128,10 @@
               <div class="section-heading folder-heading"><div><div class="section-kicker">YOUR COLLECTION</div><h2>Library folders <span class="folder-count" id="folderCount">0</span></h2><p>Only the folders you choose will be scanned.</p></div><button class="button button-white button-add" id="addFolderButton" data-action="browse"><svg class="icon"><use href="#i-plus"/></svg> Add folder</button></div>
               <div class="card folder-card">
                 <div class="folder-list" id="folderList"></div>
+                <div class="scan-options">
+                  <label class="scan-hash-choice" for="scanPhashes"><input type="checkbox" id="scanPhashes" checked><span><strong>Generate perceptual hashes on scan</strong><small>Helps StashDB match videos; scanning can take longer.</small></span></label>
+                  <div class="scan-hash-existing"><span>Already scanned? Generate missing video hashes without overwriting existing ones.</span><button class="button button-white button-small" type="button" id="generatePhashesButton" data-action="generate-phashes">Generate missing hashes</button></div>
+                </div>
                 <div class="folder-footer" id="folderFooter"><span><svg class="icon"><use href="#i-info"/></svg><span id="folderHint">Start Stash to manage your folders.</span></span><button class="text-button" id="scanButton" data-action="scan">Scan now <svg class="icon"><use href="#i-arrow-right"/></svg></button></div>
                 <div class="draft-actions" id="draftActions" hidden><div><strong>Unsaved changes</strong><span>These won't affect Stash until you save.</span></div><div class="draft-buttons"><button class="button button-white button-small" data-action="discard">Discard</button><button class="button button-white button-small" id="saveOnlyButton" data-action="save">Save</button><button class="button button-dark button-small" id="saveScanButton" data-action="save-scan">Save &amp; scan <svg class="icon"><use href="#i-arrow-right"/></svg></button></div></div>
               </div>
