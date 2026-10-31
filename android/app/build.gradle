@@ -2,6 +2,10 @@ plugins {
     id 'com.android.application'
 }
 
+// Release credentials are supplied by the build environment, never the repo.
+def pocketKeystorePath = System.getenv('POCKET_STASH_KEYSTORE')
+def pocketSigningPassword = System.getenv('POCKET_STASH_SIGNING_PASSWORD')
+
 android {
     namespace 'app.pocketstash.companion'
     compileSdk 35
@@ -15,9 +19,20 @@ android {
         versionName '0.3.0'
     }
 
+    signingConfigs {
+        release {
+            if (pocketKeystorePath && pocketSigningPassword) {
+                storeFile file(pocketKeystorePath)
+                storePassword pocketSigningPassword
+                keyAlias 'pocket-stash'
+                keyPassword pocketSigningPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {
@@ -25,6 +40,18 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/pocket-assets'))
+}
+
+// Fail closed rather than silently producing an unsigned release APK.
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach {
+    doFirst {
+        if (!pocketKeystorePath || !pocketSigningPassword) {
+            throw new GradleException('Release signing needs POCKET_STASH_KEYSTORE and POCKET_STASH_SIGNING_PASSWORD.')
+        }
+        if (!file(pocketKeystorePath).isFile()) {
+            throw new GradleException('The release keystore file does not exist.')
+        }
+    }
 }
 
 // Build the embedded Termux companion directly from the tracked source files.
