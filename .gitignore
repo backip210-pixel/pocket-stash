@@ -1,0 +1,14 @@
+# Android/Gradle local state and generated outputs
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Python/editor files
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/

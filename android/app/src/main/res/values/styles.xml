@@ -1,0 +1,13 @@
+<resources>
+    <style name="BaseAppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#276b57</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#f5f5ef</item>
+        <!-- Android 8.0 lacks light navigation icons, so use a dark bar. -->
+        <item name="android:navigationBarColor">#173e33</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#f5f5ef</item>
+    </style>
+    <style name="AppTheme" parent="BaseAppTheme" />
+</resources>

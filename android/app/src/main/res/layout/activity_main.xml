@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#f5f5ef">
+
+    <ScrollView android:id="@+id/onboarding" android:layout_width="match_parent"
+        android:layout_height="match_parent" android:fillViewport="true">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:paddingStart="24dp" android:paddingEnd="24dp"
+            android:paddingTop="28dp" android:paddingBottom="32dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView android:layout_width="42dp" android:layout_height="42dp"
+                    android:src="@drawable/ic_pocket" android:contentDescription="Pocket Stash icon" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp" android:text="pocket stash"
+                    android:textColor="#173e33" android:textStyle="bold" android:textSize="19sp" />
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:gravity="end" android:text="ANDROID COMPANION"
+                    android:textColor="#718078" android:letterSpacing="0.08" android:textSize="11sp" />
+            </LinearLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="34dp" android:text="Your library,\nright here."
+                android:textColor="#173e33" android:textStyle="bold" android:lineSpacingExtra="-1dp"
+                android:letterSpacing="-0.025" android:textSize="34sp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="12dp" android:lineSpacingExtra="4dp"
+                android:text="A little Android companion for Stash. Stash and the setup server run separately in Termux on this phone."
+                android:textColor="#5e6d63" android:textSize="15sp" />
+            <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="22dp" android:background="@drawable/bg_status" android:padding="15dp"
+                android:text="Checking for your local setup…" android:textColor="#245341"
+                android:lineSpacingExtra="3dp" android:textSize="14sp" android:accessibilityLiveRegion="polite" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="20dp" android:background="@drawable/bg_card" android:orientation="vertical"
+                android:padding="18dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="FIRST-TIME SETUP" android:textColor="#608072" android:letterSpacing="0.1"
+                    android:textStyle="bold" android:textSize="11sp" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp" android:text="1  Install &amp; open Termux" android:textColor="#203a2e"
+                    android:textSize="16sp" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp" android:text="Use the APT build from F-Droid or Termux’s official GitHub releases. Open it once and let its initial setup finish."
+                    android:textColor="#6a756d" android:lineSpacingExtra="3dp" android:textSize="13sp" />
+                <Button android:id="@+id/open_termux" style="?android:attr/borderlessButtonStyle"
+                    android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="9dp"
+                    android:background="@drawable/bg_secondary" android:text="Open Termux / get Termux"
+                    android:textAllCaps="false" android:textColor="#245341" android:textSize="14sp" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="22dp" android:text="2  Prepare Termux" android:textColor="#203a2e"
+                    android:textSize="16sp" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp" android:text="Copy the command, paste it into Termux, and approve storage access. It also enables the external-app setting needed for automatic startup."
+                    android:textColor="#6a756d" android:lineSpacingExtra="3dp" android:textSize="13sp" />
+                <Button android:id="@+id/copy_command" style="?android:attr/borderlessButtonStyle"
+                    android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="9dp"
+                    android:background="@drawable/bg_secondary" android:text="Copy Termux setup command"
+                    android:textAllCaps="false" android:textColor="#245341" android:textSize="14sp" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="22dp" android:text="3  Allow Termux control" android:textColor="#203a2e"
+                    android:textSize="16sp" android:textStyle="bold" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp" android:text="Grant Pocket Stash the Termux command permission. Android may put it under Additional permissions in this app’s settings."
+                    android:textColor="#6a756d" android:lineSpacingExtra="3dp" android:textSize="13sp" />
+                <Button android:id="@+id/grant_permission" style="?android:attr/borderlessButtonStyle"
+                    android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="9dp"
+                    android:background="@drawable/bg_secondary" android:text="Allow Termux control"
+                    android:textAllCaps="false" android:textColor="#245341" android:textSize="14sp" />
+            </LinearLayout>
+            <Button android:id="@+id/start" style="?android:attr/borderlessButtonStyle"
+                android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="18dp"
+                android:background="@drawable/bg_primary" android:text="Start Pocket Stash  →"
+                android:textAllCaps="false" android:textColor="#ffffff" android:textStyle="bold" android:textSize="15sp" />
+            <Button android:id="@+id/check" style="?android:attr/borderlessButtonStyle"
+                android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="8dp"
+                android:background="@drawable/bg_secondary" android:text="Already running? Check connection"
+                android:textAllCaps="false" android:textColor="#245341" android:textSize="14sp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" android:lineSpacingExtra="3dp"
+                android:text="Security: Termux control lets this app run commands with Termux’s access. Only grant it to apps you trust. You can instead start the companion manually in Termux without granting this permission."
+                android:textColor="#718078" android:textSize="12sp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout android:id="@+id/web_container" android:layout_width="match_parent"
+        android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
+            android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="14dp"
+            android:paddingEnd="8dp" android:background="#f5f5ef">
+            <ImageView android:layout_width="30dp" android:layout_height="30dp"
+                android:src="@drawable/ic_pocket" android:contentDescription="Pocket Stash" />
+            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginStart="8dp" android:text="pocket stash" android:textColor="#173e33"
+                android:textStyle="bold" android:textSize="15sp" />
+            <Button android:id="@+id/nav_setup" style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp"
+                android:paddingStart="10dp" android:paddingEnd="10dp" android:text="Setup"
+                android:textAllCaps="false" android:textColor="#245341" android:textSize="13sp" />
+            <Button android:id="@+id/nav_stash" style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp"
+                android:paddingStart="10dp" android:paddingEnd="10dp" android:text="Stash"
+                android:textAllCaps="false" android:textColor="#245341" android:textSize="13sp" />
+            <Button android:id="@+id/nav_help" style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp"
+                android:paddingStart="10dp" android:paddingEnd="10dp" android:text="Help"
+                android:textAllCaps="false" android:textColor="#245341" android:textSize="13sp" />
+        </LinearLayout>
+        <WebView android:id="@+id/webview" android:layout_width="match_parent"
+            android:layout_height="0dp" android:layout_weight="1" />
+    </LinearLayout>
+</FrameLayout>

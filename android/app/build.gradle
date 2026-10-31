@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.pocketstash.companion'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'app.pocketstash.companion'
+        minSdk 26
+        targetSdk 35
+        versionCode 3
+        versionName '0.3.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/pocket-assets'))
+}
+
+// Build the embedded Termux companion directly from the tracked source files.
+// This keeps the APK and repository in sync; no separate binary payload is checked in.
+tasks.register('bundleCompanion', Zip) {
+    archiveFileName = 'companion.zip'
+    destinationDirectory = layout.buildDirectory.dir('generated/pocket-assets')
+    from(rootProject.file('../server.py'))
+    from(rootProject.file('../performer_workflow.py'))
+    from(rootProject.file('../web')) {
+        include 'index.html', 'style.css', 'app.js', 'favicon.svg'
+        into 'web'
+    }
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.named('preBuild').configure { dependsOn(tasks.named('bundleCompanion')) }
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
