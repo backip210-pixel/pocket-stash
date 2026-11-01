@@ -31,7 +31,7 @@ from performer_workflow import PerformerWorkflow, WorkflowError
 
 APP_DIR = Path(__file__).resolve().parent
 WEB_DIR = APP_DIR / "web"
-APP_VERSION = "0.3.2"
+APP_VERSION = "0.3.3"
 STASH_PORT = 9999
 MAX_BODY = 65536
 
@@ -626,6 +626,10 @@ class Companion:
             else:
                 self.gql("mutation PocketConfigure($input: ConfigGeneralInput!) { configureGeneral(input: $input) { stashes { path excludeVideo excludeImage } } }",
                          {"input": {"stashes": requested}}, timeout=15)
+            # Prepare the two workflow folders without replacing existing files.
+            # A permission failure is reported per library; it must not roll
+            # back the already-saved Stash configuration.
+            workflow_pairs = self.workflow._prepare_pairs_locked(requested)
             # A successful config update is not rolled back if the separate scan request fails.
             job_id, scan_error = None, None
             if scan and requested:
@@ -633,7 +637,7 @@ class Companion:
                     job_id = self._queue_scan(generate_phashes)
                 except StashError as exc:
                     scan_error = str(exc)
-            return {"saved": True, "job_id": job_id, "scan_error": scan_error}
+            return {"saved": True, "job_id": job_id, "scan_error": scan_error, "workflow_pairs": workflow_pairs["pairs"]}
 
     def _queue_scan(self, generate_phashes=True):
         if not isinstance(generate_phashes, bool):
@@ -826,6 +830,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = app.scan(body.get("generate_phashes", True))
             elif path == "/api/phashes/generate":
                 result = app.generate_missing_phashes()
+            elif path == "/api/workflow/prepare-folders":
+                result = app.workflow.prepare_pairs()
             elif path == "/api/workflow/create-folder":
                 result = app.workflow.create_folder(body.get("parent"), body.get("name"))
             elif path == "/api/workflow/preview":

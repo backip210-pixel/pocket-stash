@@ -24,6 +24,9 @@
     if (requested === 'dark' || requested === 'light') savedTheme = requested;
   }
   applyAppearance(savedTheme);
+  // The native Activity reapplies its saved setting after every setup-page
+  // navigation, including WebView history restores that omit the query string.
+  if (nativeAndroid) window.pocketApplyAppearance = applyAppearance;
   $('themeButton').addEventListener('click', () => applyAppearance(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
   try { $('scanPhashes').checked = localStorage.getItem('pocket-scan-phashes') !== 'off'; } catch (_) { /* default on */ }
   $('scanPhashes').addEventListener('change', () => {
@@ -40,7 +43,10 @@
   let browser = null;
   let browserPurpose = 'library';
   let wfPlan = null;
-  let wfChoices = {};
+  let wfChoices = {}; // Kept only for compatibility with an older open dialog.
+  let wfPairs = [];
+  let wfPairsFingerprint = null;
+  let wfPreparing = false;
   let wfExcluded = new Set();
   let wfSnapshot = '';
   let wfRunning = false;
@@ -156,6 +162,8 @@
     renderServer();
     renderTools();
     renderFolders();
+    if (status.server.state === 'running' && status.server.system === 'OK' && Array.isArray(status.folders)
+        && status.fingerprint !== wfPairsFingerprint && !wfPreparing && !dirty) wfPreparePairs();
     document.querySelectorAll('.wf-native').forEach(link => { link.hidden = !nativeAndroid || status.demo; });
   }
   function renderServer() {
@@ -392,9 +400,11 @@
     await runAction(async () => {
       const result = await api('/api/folders', {folders: draft, fingerprint, scan, generate_phashes: $('scanPhashes').checked});
       dirty = false;
-      if (result.scan_error) toast('Folders saved, but the scan could not start: ' + result.scan_error, 'warning');
+      const pairError = (result.workflow_pairs || []).find(pair => !pair.ready);
+      if (pairError) toast('Folders saved, but Unsorted/Sorted need attention: ' + pairError.error, 'warning');
+      else if (result.scan_error) toast('Folders saved, but the scan could not start: ' + result.scan_error, 'warning');
       else if (result.job_id) toast('Folders saved. A scan has been queued in Stash.');
-      else toast('Folders saved.');
+      else toast('Folders saved. Unsorted and Sorted are ready for each video library.');
     });
   }
   async function scan() {
@@ -460,8 +470,64 @@
   $('demoReset').addEventListener('click', () => runAction(async () => {
     await api('/api/demo/reset', {}); dirty = false; draft = []; fingerprint = null; toast('Demo reset.');
   }));
-  // The workflow is a dry run until the user explicitly enables renaming and
-  // accepts the reviewed moves. No Google Photos state is inferred here.
+  // Folder preparation is idempotent and never moves existing files.
+  async function wfPreparePairs(force = false) {
+    if (wfPreparing || !status || status.server.state !== 'running' || status.server.system !== 'OK') return;
+    if (!force && status.fingerprint === wfPairsFingerprint) return;
+    const requestedFingerprint = status.fingerprint;
+    wfPreparing = true;
+    $('wfPairsStatus').textContent = 'Preparing Unsorted and Sorted for video libraries…';
+    try {
+      const result = await api('/api/workflow/prepare-folders', {});
+      if (requestedFingerprint !== status?.fingerprint) return;
+      wfPairsFingerprint = requestedFingerprint;
+      wfPairs = result.pairs || [];
+      wfRenderPairs();
+    } catch (error) {
+      if (requestedFingerprint === status?.fingerprint) wfPairsFingerprint = requestedFingerprint;
+      $('wfPairsStatus').textContent = error.status === 404
+        ? 'The running Termux companion is older than this app. Finish its tasks, stop it, then start Pocket Stash again.'
+        : 'Could not prepare library folders: ' + error.message + ' Use Retry folder setup after resolving the issue.';
+    } finally { wfPreparing = false; }
+  }
+  function wfRenderPairs() {
+    const select = $('wfLibrary');
+    let wanted = select.value;
+    try { if (!wanted) wanted = localStorage.getItem('pocket-workflow-library') || ''; } catch (_) { /* optional */ }
+    select.replaceChildren();
+    const empty = document.createElement('option'); empty.value = ''; empty.textContent = 'Choose a video library…'; select.append(empty);
+    for (const pair of wfPairs) {
+      const option = document.createElement('option'); option.value = pair.library;
+      option.disabled = !pair.ready;
+      option.textContent = pair.library + (pair.error ? ' — ' + pair.error : !pair.photos_supported ? ' — Photos visibility not guaranteed' : '');
+      select.append(option);
+    }
+    const available = wfPairs.filter(pair => pair.ready);
+    select.value = available.some(pair => pair.library === wanted) ? wanted : (available[0]?.library || '');
+    const problems = wfPairs.filter(pair => !pair.ready || !pair.photos_supported);
+    $('wfPairsStatus').textContent = problems.length
+      ? problems.map(pair => pair.library + ': ' + (pair.error || 'outside primary shared storage; Photos and native helpers may not see it')).join(' · ')
+      : available.length ? 'Unsorted and Sorted are ready. Existing files and old locations were left untouched.'
+      : 'No selected video libraries yet. Save a library folder above to create the pair.';
+    wfSelectPair();
+  }
+  function wfSelectPair() {
+    const pair = wfPairs.find(item => item.library === $('wfLibrary').value && item.ready);
+    const nextSource = pair?.unsorted || '';
+    const nextDestination = pair?.sorted || '';
+    const changed = $('wfSource').value !== nextSource || $('wfDestination').value !== nextDestination;
+    $('wfSource').value = nextSource; $('wfDestination').value = nextDestination;
+    $('wfPreviewButton').disabled = !pair || wfBusy || wfRunning;
+    if (changed) {
+      wfPlan = null; wfChoices = {}; wfExcluded = new Set(); $('wfPlan').hidden = true;
+      $('wfRename').checked = false; $('wfConsent').checked = false; wfUpdateApply();
+    }
+    try { localStorage.setItem('pocket-workflow-library', pair?.library || ''); } catch (_) { /* optional */ }
+  }
+  $('wfLibrary').addEventListener('change', wfSelectPair);
+
+  // The workflow stays a dry run until the user explicitly accepts it.
+  // No Google Photos state is inferred here.
   function wfElement(tag, cls, text) {
     const el = document.createElement(tag);
     if (cls) el.className = cls;
@@ -482,7 +548,9 @@
     if (!wfPlan) { $('wfPlan').hidden = true; return; }
     $('wfPlan').hidden = false;
     const count = wfPlan.items.filter(item => item.state === 'ready').length;
-    $('wfPlanTitle').textContent = `${count} ready · ${wfPlan.items.length - count} need attention or excluded`;
+    const extra = wfPlan.copy_bytes || 0;
+    const amount = extra >= 1024 ** 3 ? (extra / 1024 ** 3).toFixed(2) + ' GiB' : (extra / 1024 ** 2).toFixed(1) + ' MiB';
+    $('wfPlanTitle').textContent = `${count} ready · ${wfPlan.output_files || 0} performer files · ${amount} extra space`;
     if (!wfPlan.items.length) list.append(wfElement('p', 'wf-empty', 'No indexed source videos were found. Scan the source in Stash, then identify its scenes.'));
     for (const item of wfPlan.items) {
       const row = wfElement('div', 'wf-row');
@@ -496,54 +564,44 @@
         wfPreview();
       });
       top.append(include, wfElement('span', 'wf-row-title', item.title || item.source.split('/').pop()),
-                 wfElement('span', 'wf-row-state' + (item.state !== 'ready' ? ' warning' : ''), item.state === 'needs_choice' ? 'choose' : item.state));
+                 wfElement('span', 'wf-row-state' + (item.state !== 'ready' ? ' warning' : ''), item.state));
       row.append(top, wfPath('From', item.source));
-      if (item.target) row.append(wfPath('To', item.target));
-      if (item.reason) row.append(wfPath('Note', item.reason));
-      if (item.performers.length > 1 && item.state !== 'excluded') {
-        const select = document.createElement('select');
-        select.setAttribute('aria-label', 'Choose performer for ' + (item.title || item.source));
-        const initial = wfElement('option', '', 'Choose one performer…'); initial.value = ''; select.append(initial);
-        for (const person of item.performers) {
-          const option = wfElement('option', '', person.name + (person.disambiguation ? ' (' + person.disambiguation + ')' : ''));
-          option.value = person.id; select.append(option);
-        }
-        select.value = wfChoices[item.scene_id] || item.selected_performer || '';
-        select.addEventListener('change', () => {
-          if (select.value) wfChoices[item.scene_id] = select.value; else delete wfChoices[item.scene_id];
-          wfPreview();
-        });
-        row.append(select);
+      for (const target of item.targets || []) {
+        row.append(wfPath(target.operation === 'move' ? 'Move original to' : 'Verified copy to', target.target));
       }
+      if (item.reason) row.append(wfPath('Note', item.reason));
       list.append(row);
     }
     wfUpdateApply();
   }
   async function wfPreview() {
     if (wfBusy || wfRunning) return toast('Wait for the current workflow action to finish.', 'warning');
-    if (!$('wfSource').value || !$('wfDestination').value) return toast('Choose both workflow folders first.', 'warning');
+    if (!$('wfSource').value || !$('wfDestination').value) return toast('Choose an available video library first.', 'warning');
     wfBusy = true; wfPlan = null; wfUpdateApply();
-    $('wfPreviewButton').disabled = true;
+    $('wfPreviewButton').disabled = true; $('wfLibrary').disabled = true;
+    document.querySelectorAll('#wfPlanRows input[type="checkbox"]').forEach(input => { input.disabled = true; });
     try {
       wfPlan = await api('/api/workflow/preview', {source: $('wfSource').value, destination: $('wfDestination').value,
                          choices: wfChoices, excluded: Array.from(wfExcluded)});
       wfRenderPlan();
-      toast('Preview ready. Nothing has moved.');
+      toast('Preview ready. Nothing has moved or been copied.');
     } catch (error) { $('wfPlan').hidden = true; toast(error.message, 'error'); }
-    finally { wfBusy = false; $('wfPreviewButton').disabled = false; wfUpdateApply(); }
+    finally { wfBusy = false; $('wfLibrary').disabled = false; wfRenderPlan(); wfSelectPair(); wfUpdateApply(); }
   }
   async function wfApply() {
     if (!wfPlan || $('wfApply').disabled) return;
     const count = wfPlan.items.filter(i => i.state === 'ready').length;
-    if (!window.confirm(`Move and rename ${count} original video${count === 1 ? '' : 's'} using the reviewed paths? This is not a backup. Keep other file operations idle.`)) return;
-    wfBusy = true; wfUpdateApply();
+    if (!window.confirm(`Sort ${count} original video${count === 1 ? '' : 's'} into ${wfPlan.output_files} performer files? Filenames stay unchanged. This is not a backup; keep other file operations idle.`)) return;
+    wfBusy = true; $('wfLibrary').disabled = true; $('wfPreviewButton').disabled = true;
+    document.querySelectorAll('#wfPlanRows input[type="checkbox"]').forEach(input => { input.disabled = true; });
+    wfUpdateApply();
     try {
       await api('/api/workflow/apply', {plan_id: wfPlan.id, enable_rename: $('wfRename').checked, acknowledged: $('wfConsent').checked});
       wfPlan = null; wfRenderPlan(); $('wfRename').checked = false; $('wfConsent').checked = false;
-      wfSnapshot = ''; toast(status.demo ? 'Demo move started. No real files are changed.' : 'Move started. Keep Stash and Termux running.');
+      wfSnapshot = ''; toast(status.demo ? 'Demo sorting started. No real files are changed.' : 'Sorting started. Keep Stash and Termux running.');
       await wfRefresh();
     } catch (error) { toast(error.message, 'error'); }
-    finally { wfBusy = false; wfUpdateApply(); }
+    finally { wfBusy = false; $('wfLibrary').disabled = false; wfRenderPlan(); wfSelectPair(); wfUpdateApply(); }
   }
   async function wfReview(item, backup, album) {
     try {
@@ -563,31 +621,34 @@
     const history = $('wfHistory'); history.replaceChildren();
     if (data.history_error) history.append(wfElement('div', 'wf-warning', data.history_error));
     if (!data.runs.length) {
-      history.append(wfElement('p', 'wf-empty', 'Moved videos and your review checklist will appear here.'));
+      history.append(wfElement('p', 'wf-empty', 'Sorted videos and your review checklist will appear here.'));
       return;
     }
     for (const run of data.runs.slice().reverse()) {
       const block = wfElement('div', 'wf-run');
       const title = wfElement('div', 'wf-run-heading', `Batch · ${run.state.replace('_', ' ')}`);
-      const msg = wfElement('p', 'wf-run-msg', run.message || '');
+      const percent = run.progress?.total ? ` (${Math.floor(run.progress.done * 100 / run.progress.total)}%)` : '';
+      const msg = wfElement('p', 'wf-run-msg', (run.message || '') + percent);
       block.append(title, msg);
       for (const item of run.items) {
         const row = wfElement('div', 'wf-row');
         const top = wfElement('div', 'wf-row-top');
         top.append(wfElement('span', 'wf-row-title', item.title || item.source.split('/').pop()),
-                   wfElement('span', 'wf-row-state' + (item.state !== 'moved' ? ' warning' : ''), item.state.replace('_', ' ')));
+                   wfElement('span', 'wf-row-state' + (!['moved', 'copied'].includes(item.state) ? ' warning' : ''), item.state.replace('_', ' ')));
         row.append(top, wfPath('From', item.source), wfPath('To', item.target));
         if (item.reason) row.append(wfPath('Note', item.reason));
         if (item.state === 'uncertain') {
-          const warning = wfElement('p', 'wf-path-line', 'Inspect both locations and Stash. A failed copy can leave a partial target; do not retry blindly.');
+          const isCopy = item.operation === 'copy';
+          const warning = wfElement('p', 'wf-path-line', 'Inspect the source, destination and Stash. Do not retry blindly; some files may already exist.');
+          if (isCopy && item.temporary) row.append(wfPath('Temporary file', item.temporary));
           const actions = wfElement('div', 'wf-actions');
-          const moved = wfElement('button', 'button button-white button-small', 'Check: moved');
-          moved.addEventListener('click', () => wfResolve(item, 'moved'));
-          const notMoved = wfElement('button', 'button button-white button-small', 'Check: not moved');
-          notMoved.addEventListener('click', () => wfResolve(item, 'not_moved'));
-          actions.append(moved, notMoved); row.append(warning, actions);
+          const done = wfElement('button', 'button button-white button-small', isCopy ? 'Check: copied' : 'Check: moved');
+          done.addEventListener('click', () => wfResolve(item, isCopy ? 'copied' : 'moved'));
+          const notDone = wfElement('button', 'button button-white button-small', isCopy ? 'Check: not copied' : 'Check: not moved');
+          notDone.addEventListener('click', () => wfResolve(item, isCopy ? 'not_copied' : 'not_moved'));
+          actions.append(done, notDone); row.append(warning, actions);
         }
-        if (item.state === 'moved') {
+        if (item.state === 'moved' || item.state === 'copied') {
           row.append(wfPath('Matching album', item.album));
           if (!item.local_present) row.append(wfPath('Local file', 'Not present. This does not prove Google Photos has a backup.'));
           const review = wfElement('div', 'wf-review');
@@ -624,7 +685,7 @@
     wfPolling = true;
     try {
       const data = await api('/api/workflow');
-      wfRunning = !!data.running; wfUpdateApply();
+      wfRunning = !!data.running; $('wfPreviewButton').disabled = !$('wfSource').value || wfBusy || wfRunning; wfUpdateApply();
       const snapshot = JSON.stringify(data);
       if (snapshot !== wfSnapshot) { wfSnapshot = snapshot; wfRenderHistory(data); }
     } catch (_) { /* Existing status card reports connection failures. */ }
@@ -646,6 +707,7 @@
     else if (action === 'browse') showBrowser();
     else if (action === 'wf-source') showBrowser('source');
     else if (action === 'wf-destination') showBrowser('destination');
+    else if (action === 'wf-prepare') wfPreparePairs(true);
     else if (action === 'wf-preview') wfPreview();
     else if (action === 'wf-apply') wfApply();
     else if (action === 'wf-refresh') { wfSnapshot = ''; wfRefresh(); }

@@ -160,3 +160,6 @@ html[data-theme="dark"] .tool-pill.online i { box-shadow: 0 0 0 3px #284534; }
 }
 /* Explicitly restore native controls when a dark-system user picks light. */
 html[data-theme="light"] { color-scheme: light; }
+/* Library-pair selector shares the appearance of the path fields. */
+.wf-pickers select{width:100%;max-width:100%;border:1px solid #dfe6de;background:#fbfcfa;border-radius:8px;padding:10px;font-size:11px;color:#365143}
+html[data-theme="dark"] .wf-pickers select{color:#e1eee4;background:#14231a;border-color:#466451}

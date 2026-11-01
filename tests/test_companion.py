@@ -73,6 +73,29 @@ class FolderTests(unittest.TestCase):
                 result = app.save_folders([row], folder_fingerprint([]), scan=True)
                 self.assertTrue(result["saved"])
                 self.assertEqual(result["scan_error"], "scan failed")
+                self.assertTrue((folder / "Unsorted").is_dir())
+                self.assertTrue((folder / "Sorted").is_dir())
+                self.assertTrue(result["workflow_pairs"][0]["ready"])
+
+    def test_new_library_gets_pair_without_changing_old_library(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); old = root / 'old'; new = root / 'new'; image = root / 'images'
+            old.mkdir(); new.mkdir(); image.mkdir()
+            (old / 'existing.mp4').write_bytes(b'old content')
+            app = Companion(home=root, allow_non_termux=True)
+            existing = [{'path': str(old), 'excludeVideo': False, 'excludeImage': False}]
+            wanted = existing + [{'path': str(new), 'excludeVideo': False, 'excludeImage': False},
+                                 {'path': str(image), 'excludeVideo': True, 'excludeImage': False}]
+            with mock.patch.object(app, 'server_state', return_value={'state': 'running', 'system': 'OK'}), \
+                 mock.patch.object(app, 'configured_folders', return_value=existing), \
+                 mock.patch.object(app, 'gql', return_value={'configureGeneral': {}}):
+                result = app.save_folders(wanted, folder_fingerprint(existing))
+            self.assertTrue(all(p['ready'] for p in result['workflow_pairs']))
+            for folder in (old, new):
+                self.assertTrue((folder / 'Unsorted').is_dir())
+                self.assertTrue((folder / 'Sorted').is_dir())
+            self.assertFalse((image / 'Unsorted').exists())
+            self.assertEqual((old / 'existing.mp4').read_bytes(), b'old content')
 
 
 class ScanAndHashTests(unittest.TestCase):

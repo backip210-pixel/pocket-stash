@@ -127,24 +127,38 @@ public final class MainActivity extends Activity {
     }
 
     private String setupPageUrl() {
-        return HOME_URL + "?appearance=" + (darkAppearance ? "dark" : "light");
+        return AppearanceSync.setupUrl(darkAppearance);
     }
 
     private void configureAppearanceControls() {
-        String label = darkAppearance ? "Light mode" : "Dark mode";
+        String current = darkAppearance ? "Dark" : "Light";
         Button onboardingButton = findViewById(R.id.appearance_onboarding);
         Button toolbarButton = findViewById(R.id.appearance_toolbar);
-        onboardingButton.setText(label);
-        onboardingButton.setContentDescription("Switch to " + label.toLowerCase(java.util.Locale.ROOT));
-        toolbarButton.setText(darkAppearance ? "☀" : "☾");
-        toolbarButton.setContentDescription("Switch to " + label.toLowerCase(java.util.Locale.ROOT));
-        onboardingButton.setOnClickListener(v -> changeAppearance());
-        toolbarButton.setOnClickListener(v -> changeAppearance());
+        onboardingButton.setText("Theme: " + current);
+        toolbarButton.setText(current);
+        onboardingButton.setContentDescription("Appearance: " + current + ". Choose theme");
+        toolbarButton.setContentDescription("Appearance: " + current + ". Choose theme");
+        onboardingButton.setOnClickListener(v -> chooseAppearance());
+        toolbarButton.setOnClickListener(v -> chooseAppearance());
     }
 
-    private void changeAppearance() {
+    private void chooseAppearance() {
+        new AlertDialog.Builder(this).setTitle("Appearance")
+                .setSingleChoiceItems(new String[]{"Dark", "Light"}, darkAppearance ? 0 : 1, (dialog, which) -> {
+                    dialog.dismiss();
+                    boolean selectedDark = which == 0;
+                    if (selectedDark != darkAppearance) changeAppearance(selectedDark);
+                }).setNegativeButton("Cancel", null).show();
+    }
+
+    private void changeAppearance(boolean selectedDark) {
         Runnable change = () -> {
-            prefs.edit().putBoolean(DARK_APPEARANCE, !darkAppearance).apply();
+            // Persist before recreating, so a process restart cannot race an
+            // asynchronous preferences write and silently restore light mode.
+            if (!prefs.edit().putBoolean(DARK_APPEARANCE, selectedDark).commit()) {
+                toast("Could not save the appearance setting. Please try again.");
+                return;
+            }
             recreate();
         };
         if (webContainer.getVisibility() != View.VISIBLE) {
@@ -215,6 +229,16 @@ public final class MainActivity extends Activity {
                 // follow redirects without invoking this callback, so this is not a firewall.
                 return new WebResourceResponse("text/plain", "utf-8", 403, "Blocked",
                         Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
+            }
+
+            @Override public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                if (!PhotosLink.isCompanionPage(url)) return;
+                // A history restore can omit the appearance query. Reapply the
+                // Activity's persisted theme to setup after *every* navigation.
+                // The fallback also darkens an older running companion page;
+                // the version warning still asks the user to restart it.
+                view.evaluateJavascript(AppearanceSync.script(darkAppearance), null);
             }
 
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
